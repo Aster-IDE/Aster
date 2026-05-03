@@ -1,6 +1,7 @@
 use eframe::egui;
 use std::path::PathBuf;
 use aster_settings::{Settings, ThemePreference, TabOrientation};
+use aster_markup::{MarkupPreview, MarkupFormat};
 
 fn main() -> eframe::Result<()> {
     let options = eframe::NativeOptions {
@@ -18,7 +19,7 @@ fn main() -> eframe::Result<()> {
 }
 
 enum Tab {
-    Editor(String, Option<PathBuf>, bool),
+    Editor(String, Option<PathBuf>, bool, bool),
     Settings,
 }
 
@@ -27,15 +28,17 @@ struct Aster {
     active_tab: usize,
     settings: Settings,
     font_size: f32,
+    markup_preview: MarkupPreview,
 }
 
 impl Default for Aster {
     fn default() -> Self {
         Self {
-            tabs: vec![Tab::Editor(String::new(), None, false)],
+            tabs: vec![Tab::Editor(String::new(), None, false, false)],
             active_tab: 0,
             settings: Settings::load(),
             font_size: 14.0,
+            markup_preview: MarkupPreview::default(),
         }
     }
 }
@@ -55,6 +58,9 @@ impl eframe::App for Aster {
             visuals.widgets.inactive.bg_fill = egui::Color32::from_rgb(55, 35, 45);
             visuals.widgets.hovered.bg_fill = egui::Color32::from_rgb(85, 55, 70);
             visuals.widgets.active.bg_fill = egui::Color32::from_rgb(255, 90, 150);
+            visuals.widgets.active.fg_stroke = egui::Stroke::new(1.0, egui::Color32::from_rgb(255, 130, 180));
+            visuals.selection.bg_fill = egui::Color32::from_rgb(255, 90, 150);
+            visuals.selection.stroke = egui::Stroke::new(1.0, egui::Color32::from_rgb(255, 130, 180));
             visuals.override_text_color = Some(egui::Color32::from_rgb(255, 235, 245));
             ctx.set_visuals(visuals);
         } else {
@@ -64,6 +70,9 @@ impl eframe::App for Aster {
             visuals.widgets.inactive.bg_fill = egui::Color32::from_rgb(255, 235, 245);
             visuals.widgets.hovered.bg_fill = egui::Color32::from_rgb(250, 215, 235);
             visuals.widgets.active.bg_fill = egui::Color32::from_rgb(255, 90, 150);
+            visuals.widgets.active.fg_stroke = egui::Stroke::new(1.0, egui::Color32::from_rgb(255, 130, 180));
+            visuals.selection.bg_fill = egui::Color32::from_rgb(255, 90, 150);
+            visuals.selection.stroke = egui::Stroke::new(1.0, egui::Color32::from_rgb(255, 130, 180));
             visuals.override_text_color = Some(egui::Color32::from_rgb(80, 40, 60));
             ctx.set_visuals(visuals);
         }
@@ -188,7 +197,7 @@ impl eframe::App for Aster {
         });
 
         egui::CentralPanel::default()
-            .frame(egui::Frame::central_panel(&ctx.style()).fill(egui::Color32::from_rgb(25, 15, 20)))
+            .frame(egui::Frame::central_panel(&ctx.style()))
             .show(ctx, |ui| {
                 if self.tabs.is_empty() {
                     ui.vertical_centered(|ui| {
@@ -222,9 +231,8 @@ impl eframe::App for Aster {
                             egui::Layout::top_down(egui::Align::Center),
                             |ui| {
                                 egui::Frame::group(&ui.style())
-                                    .fill(egui::Color32::from_rgb(45, 28, 38))
                                     .inner_margin(20.0)
-                                    .stroke(egui::Stroke::new(1.0, egui::Color32::from_rgb(255, 130, 180)))
+                                    .stroke(egui::Stroke::new(1.0, ui.ctx().style().visuals.widgets.active.bg_fill))
                                     .show(ui, |ui| {
                                         let button_size = egui::vec2(200.0, 40.0);
                                         let button_stroke = egui::Stroke::new(1.0, egui::Color32::from_rgb(255, 130, 180));
@@ -254,23 +262,88 @@ impl eframe::App for Aster {
                     });
 
                 } else if self.active_tab < self.tabs.len() {
-                    let is_editor = matches!(self.tabs[self.active_tab], Tab::Editor(_, _, _));
+                    let is_editor = matches!(self.tabs[self.active_tab], Tab::Editor(_, _, _, _));
                     
                     if is_editor {
-                        if let Tab::Editor(ref mut text, _, ref mut modified) = self.tabs[self.active_tab] {
+                        if let Tab::Editor(ref mut text, _, ref mut modified, ref mut show_preview) = self.tabs[self.active_tab] {
                             let line_count = Self::get_line_count_inner(text);
                             let char_count = text.chars().count();
                             let line_ending = Self::get_line_ending_type_inner(text);
                             let cursor_pos = Self::get_cursor_position();
                             let is_modified = *modified;
                             
-                            let text_edit = egui::TextEdit::multiline(text)
-                                .desired_width(f32::INFINITY)
-                                .font(egui::FontId::new(self.font_size, egui::FontFamily::Monospace));
+                            ui.horizontal(|ui| {
+                                if ui.button(if *show_preview { "Hide Preview" } else { "Show Preview" }).clicked() {
+                                    *show_preview = !*show_preview;
+                                }
+                                ui.separator();
+                                ui.label(format!("Preview: {}", if *show_preview { "ON" } else { "OFF" }));
+                            });
                             
-                            let response = ui.add(text_edit);
-                            if response.changed() {
-                                *modified = true;
+                            if *show_preview {
+                                let total_height = ui.available_height();
+                                let button_height = 30.0;
+                                let status_height = 30.0;
+                                let available_height = total_height - button_height - status_height;
+                                
+                                ui.horizontal(|ui| {
+                                    let editor_width = ui.available_width() * 0.5;
+                                    ui.allocate_ui_with_layout(
+                                        egui::vec2(editor_width, available_height),
+                                        egui::Layout::top_down(egui::Align::LEFT),
+                                        |ui| {
+                                            ui.heading("Editor");
+                                            ui.separator();
+                                            
+                                            egui::ScrollArea::vertical()
+                                                .id_salt("editor_scroll_split")
+                                                .show(ui, |ui| {
+                                                    let text_edit = egui::TextEdit::multiline(text)
+                                                        .desired_width(f32::INFINITY)
+                                                        .font(egui::FontId::new(self.font_size, egui::FontFamily::Monospace))
+                                                        .lock_focus(true);
+                                                    
+                                                    let response = ui.add(text_edit);
+                                                    if response.changed() {
+                                                        *modified = true;
+                                                    }
+                                                });
+                                        }
+                                    );
+                                    
+                                    ui.separator();
+                                    
+                                    let preview_width = ui.available_width();
+                                    ui.allocate_ui_with_layout(
+                                        egui::vec2(preview_width, available_height),
+                                        egui::Layout::top_down(egui::Align::LEFT),
+                                        |ui| {
+                                            ui.heading("Preview");
+                                            ui.separator();
+                                            
+                                            egui::ScrollArea::vertical()
+                                                .id_salt("preview_scroll")
+                                                .show(ui, |ui| {
+                                                    let format = self.markup_preview.detect_format(text, None);
+                                                    self.markup_preview.render_to_egui(ui, text, &format);
+                                                });
+                                        }
+                                    );
+                                });
+                            } else {
+                                egui::ScrollArea::vertical()
+                                    .id_salt("editor_scroll")
+                                    .show(ui, |ui| {
+                                        let text_edit = egui::TextEdit::multiline(text)
+                                            .desired_width(f32::INFINITY)
+                                            .font(egui::FontId::new(self.font_size, egui::FontFamily::Monospace))
+                                            .lock_focus(true);
+                                        
+                                        let response = ui.add(text_edit);
+                                        if response.changed() {
+                                            *modified = true;
+                                        }
+                                    });
                             }
                             
                             egui::TopBottomPanel::bottom("status_bar").show_inside(ui, |ui| {
@@ -321,7 +394,7 @@ impl Aster {
             let tabs_info: Vec<_> = self.tabs.iter().enumerate().map(|(index, tab)| {
                 let is_active = index == self.active_tab;
                 let tab_text = match tab {
-                    Tab::Editor(_, path, modified) => {
+                    Tab::Editor(_, path, modified, _) => {
                         if let Some(p) = path {
                             format!("{}{}", p.file_name().unwrap_or_default().to_string_lossy(), if *modified { "*" } else { "" })
                         } else {
@@ -352,12 +425,26 @@ impl Aster {
                         egui::Sense::click(),
                     );
                     
+                    let is_dark = ui.ctx().style().visuals.dark_mode;
+                    
                     let bg_color = if is_active {
-                        egui::Color32::from_rgb(85, 55, 70)
+                        if is_dark {
+                            egui::Color32::from_rgb(85, 55, 70)
+                        } else {
+                            egui::Color32::from_rgb(220, 220, 230)
+                        }
                     } else if response.hovered() {
-                        egui::Color32::from_rgb(70, 45, 58)
+                        if is_dark {
+                            egui::Color32::from_rgb(70, 45, 58)
+                        } else {
+                            egui::Color32::from_rgb(200, 200, 210)
+                        }
                     } else {
-                        egui::Color32::from_rgb(45, 28, 38)
+                        if is_dark {
+                            egui::Color32::from_rgb(45, 28, 38)
+                        } else {
+                            egui::Color32::from_rgb(180, 180, 190)
+                        }
                     };
                     
                     ui.painter().rect_filled(full_rect, 0.0, bg_color);
@@ -367,13 +454,26 @@ impl Aster {
                             full_rect.left_top() + egui::vec2(0.0, 6.0),
                             egui::vec2(3.0, 14.0),
                         );
-                        ui.painter().rect_filled(indicator_rect, 0.0, egui::Color32::from_rgb(255, 130, 180));
+                        let indicator_color = if is_dark {
+                            egui::Color32::from_rgb(255, 130, 180)
+                        } else {
+                            egui::Color32::from_rgb(255, 130, 180)
+                        };
+                        ui.painter().rect_filled(indicator_rect, 0.0, indicator_color);
                     }
                     
                     let text_color = if is_active {
-                        egui::Color32::from_rgb(255, 235, 245)
+                        if is_dark {
+                            egui::Color32::from_rgb(255, 235, 245)
+                        } else {
+                            egui::Color32::from_rgb(40, 40, 40)
+                        }
                     } else {
-                        egui::Color32::from_rgb(200, 160, 180)
+                        if is_dark {
+                            egui::Color32::from_rgb(200, 160, 180)
+                        } else {
+                            egui::Color32::from_rgb(100, 100, 100)
+                        }
                     };
                     
                     let text_rect = egui::Rect::from_min_size(
@@ -442,13 +542,15 @@ impl Aster {
                         }
                         self.active_tab = new_active_tab.min(self.tabs.len().saturating_sub(1));
                     }
+                } else if new_active_tab != active_tab_idx {
+                    self.active_tab = new_active_tab;
                 }
             });
         } else {
             let tabs_info: Vec<_> = self.tabs.iter().enumerate().map(|(index, tab)| {
                 let is_active = index == self.active_tab;
                 let tab_text = match tab {
-                    Tab::Editor(_, path, modified) => {
+                    Tab::Editor(_, path, modified, _) => {
                         if let Some(p) = path {
                             format!("{}{}", p.file_name().unwrap_or_default().to_string_lossy(), if *modified { "*" } else { "" })
                         } else {
@@ -480,12 +582,26 @@ impl Aster {
                             egui::Sense::click(),
                         );
                         
+                        let is_dark = ui.ctx().style().visuals.dark_mode;
+                        
                         let bg_color = if is_active {
-                            egui::Color32::from_rgb(85, 55, 70)
+                            if is_dark {
+                                egui::Color32::from_rgb(85, 55, 70)
+                            } else {
+                                egui::Color32::from_rgb(220, 220, 230)
+                            }
                         } else if response.hovered() {
-                            egui::Color32::from_rgb(70, 45, 58)
+                            if is_dark {
+                                egui::Color32::from_rgb(70, 45, 58)
+                            } else {
+                                egui::Color32::from_rgb(200, 200, 210)
+                            }
                         } else {
-                            egui::Color32::from_rgb(45, 28, 38)
+                            if is_dark {
+                                egui::Color32::from_rgb(45, 28, 38)
+                            } else {
+                                egui::Color32::from_rgb(180, 180, 190)
+                            }
                         };
                         
                         ui.painter().rect_filled(full_rect, 0.0, bg_color);
@@ -495,13 +611,26 @@ impl Aster {
                                 full_rect.left_top(),
                                 egui::vec2(full_tab_width, 2.0),
                             );
-                            ui.painter().rect_filled(indicator_rect, 0.0, egui::Color32::from_rgb(255, 130, 180));
+                            let indicator_color = if is_dark {
+                                egui::Color32::from_rgb(255, 130, 180)
+                            } else {
+                                egui::Color32::from_rgb(255, 130, 180)
+                            };
+                            ui.painter().rect_filled(indicator_rect, 0.0, indicator_color);
                         }
                         
                         let text_color = if is_active {
-                            egui::Color32::from_rgb(255, 235, 245)
+                            if is_dark {
+                                egui::Color32::from_rgb(255, 235, 245)
+                            } else {
+                                egui::Color32::from_rgb(40, 40, 40)
+                            }
                         } else {
-                            egui::Color32::from_rgb(200, 160, 180)
+                            if is_dark {
+                                egui::Color32::from_rgb(200, 160, 180)
+                            } else {
+                                egui::Color32::from_rgb(100, 100, 100)
+                            }
                         };
                         
                         let text_rect = egui::Rect::from_min_size(
@@ -570,6 +699,8 @@ impl Aster {
                             }
                             self.active_tab = new_active_tab.min(self.tabs.len().saturating_sub(1));
                         }
+                    } else if new_active_tab != active_tab_idx {
+                        self.active_tab = new_active_tab;
                     }
                 });
             });
@@ -595,21 +726,21 @@ impl Aster {
     }
 
     fn new_file(&mut self) {
-        self.tabs.push(Tab::Editor(String::new(), None, false));
+        self.tabs.push(Tab::Editor(String::new(), None, false, false));
         self.active_tab = self.tabs.len() - 1;
     }
 
     fn open_file(&mut self) {
         if let Some(path) = rfd::FileDialog::new().pick_file() {
             if let Ok(content) = std::fs::read_to_string(&path) {
-                self.tabs.push(Tab::Editor(content, Some(path), false));
+                self.tabs.push(Tab::Editor(content, Some(path), false, false));
                 self.active_tab = self.tabs.len() - 1;
             }
         }
     }
 
     fn save_file(&mut self) {
-        if let Some(Tab::Editor(text, file_path, modified)) = self.tabs.get_mut(self.active_tab) {
+        if let Some(Tab::Editor(text, file_path, modified, _)) = self.tabs.get_mut(self.active_tab) {
             if let Some(path) = file_path {
                 if let Ok(()) = std::fs::write(path, text) {
                     *modified = false;
@@ -621,7 +752,7 @@ impl Aster {
     }
 
     fn save_file_as(&mut self) {
-        if let Some(Tab::Editor(text, file_path, modified)) = self.tabs.get_mut(self.active_tab) {
+        if let Some(Tab::Editor(text, file_path, modified, _)) = self.tabs.get_mut(self.active_tab) {
             if let Some(path) = rfd::FileDialog::new().save_file() {
                 if let Ok(()) = std::fs::write(&path, text) {
                     *file_path = Some(path);

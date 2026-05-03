@@ -6,9 +6,9 @@ members = [
 ]
 
 [workspace.package]
-version = "0.1.0"
+version = "0.1.1"
 edition = "2024"
-authors = ["Playfairs"]
+authors = ["playfairs"]
 license = "GLPv3"
 homepage = "https://github.com/Aster-IDE/Aster"
 repository = "https://github.com/Aster-IDE/Aster"

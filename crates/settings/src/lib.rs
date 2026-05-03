@@ -24,11 +24,26 @@ pub fn setting_card(
 ) {
     let card_margin = 16.0;
     let corner_roundness = 8.0;
+    let is_dark = ui.ctx().style().visuals.dark_mode;
+
+    let (bg_color, stroke_color, text_color) = if is_dark {
+        (
+            CherryBlossomTheme::BG_DARK(),
+            CherryBlossomTheme::BG_LIGHT(),
+            CherryBlossomTheme::TEXT_PRIMARY(),
+        )
+    } else {
+        (
+            egui::Color32::from_rgb(240, 240, 245),
+            egui::Color32::from_rgb(200, 200, 210),
+            egui::Color32::from_rgb(40, 40, 40),
+        )
+    };
 
     egui::Frame::group(ui.style())
-        .fill(CherryBlossomTheme::BG_DARK())
+        .fill(bg_color)
         .rounding(egui::Rounding::same(corner_roundness))
-        .stroke(egui::Stroke::new(1.0, CherryBlossomTheme::BG_LIGHT()))
+        .stroke(egui::Stroke::new(1.0, stroke_color))
         .inner_margin(egui::Margin::same(card_margin))
         .show(ui, |ui| {
             ui.set_width(ui.available_width());
@@ -38,7 +53,7 @@ pub fn setting_card(
                     egui::RichText::new(title)
                         .size(14.0)
                         .strong()
-                        .color(CherryBlossomTheme::TEXT_PRIMARY())
+                        .color(text_color)
                 ).selectable(false)
             );
 
@@ -49,7 +64,7 @@ pub fn setting_card(
                     ui.cursor().left_center(),
                     ui.cursor().left_center() + egui::vec2(ui.available_width(), 0.0),
                 ],
-                egui::Stroke::new(1.0, CherryBlossomTheme::BG_LIGHT()),
+                egui::Stroke::new(1.0, stroke_color),
             );
             ui.add_space(12.0);
 
@@ -63,6 +78,19 @@ pub fn cozy_row(
     description: &str,
     control: impl FnOnce(&mut egui::Ui),
 ) {
+    let is_dark = ui.ctx().style().visuals.dark_mode;
+    let (title_color, desc_color) = if is_dark {
+        (
+            CherryBlossomTheme::TEXT_PRIMARY(),
+            CherryBlossomTheme::TEXT_MUTED(),
+        )
+    } else {
+        (
+            egui::Color32::from_rgb(40, 40, 40),
+            egui::Color32::from_rgb(100, 100, 100),
+        )
+    };
+
     ui.horizontal(|ui| {
         ui.set_width(ui.available_width());
 
@@ -71,14 +99,14 @@ pub fn cozy_row(
                 egui::Label::new(
                     egui::RichText::new(title)
                         .size(13.0)
-                        .color(CherryBlossomTheme::TEXT_PRIMARY())
+                        .color(title_color)
                 ).selectable(false)
             );
             ui.add(
                 egui::Label::new(
                     egui::RichText::new(description)
                         .size(11.0)
-                        .color(CherryBlossomTheme::TEXT_MUTED())
+                        .color(desc_color)
                 ).selectable(false)
             );
         });

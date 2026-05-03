@@ -1,0 +1,9 @@
+[package]
+name = "aster-markup"
+version = "0.1.1"
+edition = "2021"
+
+[dependencies]
+pulldown-cmark = "0.9"
+syntect = "5.2"
+egui = "0.29"
