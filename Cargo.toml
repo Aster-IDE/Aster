@@ -1,0 +1,21 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/editor",
+    "crates/settings",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+authors = ["Playfairs"]
+license = "GLPv3"
+homepage = "https://github.com/Aster-IDE/Aster"
+repository = "https://github.com/Aster-IDE/Aster"
+
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1
+panic = "abort"
+strip = true
