@@ -26,7 +26,7 @@
         ];
 
         buildInputs = with pkgs; [
-          # Add any system dependencies here
+          # probably gonna have something for AsterIDE here
         ];
       in
       {
